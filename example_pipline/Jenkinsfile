@@ -1,0 +1,63 @@
+def gv
+def gitToken
+
+pipeline {
+    agent any
+    parameters {
+        string(name: 'PROJECTNAME', defaultValue: '', description: 'PROJECT NAME')
+        string(name: 'HOST', defaultValue: '', description: 'HOST')
+        string(name: 'KEYID', defaultValue: '', description: 'KEYID')
+        string(name: 'GITID', defaultValue: '', description: 'GITID')
+    }
+    stages {
+        stage("init") {
+            steps {
+                script {
+                    def host = params.HOST
+                    def keyid = params.KEYID
+                    def gitid = params.GITID
+                    echo "Value of HOST: ${host}"
+                    echo "Value of KEYID: ${keyid}"
+                    echo "Value of GIT ID: ${gitid}"
+                    gv = load "./script/script.groovy"
+                    echo "Load Script Success"
+                }
+            }
+        }
+        stage("Connect to Server") {
+            steps {
+                script {
+                    gv.sshServer("ls -l", host, keyid)
+                    echo "SSH Server Success"
+                }
+            }
+        }
+        stage("Git Pull Origin") {
+            steps {
+                script {
+                    echo "Git URL: ${env.GIT_URL}"
+                    echo "Git Branch: ${env.GIT_BRANCH}"
+                    withCredentials([string(credentialsId: gitid, variable: 'GITTOKEN')]) {
+                        gv.sshServer("""
+                            cd /mnt/${PROJECTNAME} && 
+                            git remote set-url origin https://${GITTOKEN}@github.com/{GITID}/${PROJECTNAME}.git && 
+                            git pull origin && 
+                            git remote set-url origin https://github.com/{GITID}/${PROJECTNAME}.git
+                            """,
+                        params.HOST, keyid)
+                    }
+                    echo "Git Pull Success"
+                }
+            }
+        }
+        stage("Deploy Application") {
+            steps {
+                script {
+                    echo "deploying"
+                    gv.sshServer("cd /mnt/${PROJECTNAME} &&  docker-compose restart", host, keyid)
+                    echo "Deploy Success"
+                }
+            }
+        }
+    }   
+}
